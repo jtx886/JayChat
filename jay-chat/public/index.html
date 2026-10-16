@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e1a">
+<title>Jay Chat</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234f7cff'/%3E%3Cstop offset='1' stop-color='%238a5cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M18 33l9 9 19-20' stroke='%23fff' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- 背景 -->
+<div class="bg-aurora">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="blob b4"></div>
+  <div class="bg-noise"></div>
+</div>
+
+<!-- ======== 认证视图 ======== -->
+<div id="auth-view" class="full-view hidden">
+  <div class="auth-wrap">
+    <div class="auth-logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 64 64"><defs><linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f7cff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#lg1)"/><path d="M18 33l9 9 19-20" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1>Jay Chat</h1>
+      <p>让沟通，更简单</p>
+    </div>
+    <div class="glass auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">登录</button>
+        <button class="auth-tab" data-tab="register">注册</button>
+      </div>
+      <div class="auth-divider"></div>
+      <!-- 登录 -->
+      <form id="login-form" class="auth-form">
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z" fill="currentColor"/></svg>
+          <input id="login-account" type="text" placeholder="用户名 / 邮箱" autocomplete="username" maxlength="30">
+        </div>
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M17 9V7a5 5 0 00-10 0v2H5v13h14V9h-2zm-8-2a3 3 0 016 0v2H9V7z" fill="currentColor"/></svg>
+          <input id="login-password" type="password" placeholder="密码" autocomplete="current-password" maxlength="40">
+        </div>
+        <div class="form-row-end">
+          <button type="button" class="link-btn" id="goto-forgot">忘记密码？</button>
+        </div>
+        <button type="submit" class="btn-primary btn-lg" id="login-btn">登 录</button>
+      </form>
+      <!-- 注册 -->
+      <form id="register-form" class="auth-form hidden">
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z" fill="currentColor"/></svg>
+          <input id="reg-username" type="text" placeholder="昵称（1-6个字符）" maxlength="6">
+        </div>
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill="currentColor"/></svg>
+          <input id="reg-email" type="email" placeholder="邮箱（仅支持 @qq.com / @163.com）" maxlength="40">
+        </div>
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M17 9V7a5 5 0 00-10 0v2H5v13h14V9h-2zm-8-2a3 3 0 016 0v2H9V7z" fill="currentColor"/></svg>
+          <input id="reg-password" type="password" placeholder="密码（至少6位）" maxlength="40">
+        </div>
+        <div class="field code-field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M12 2L4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3zm0 4a2 2 0 110 4 2 2 0 010-4zm0 6c1.2 0 2.3.5 3 1.3l-1.2 1.7c-.4-.6-1-1-1.8-1s-1.4.4-1.8 1L9 13.3c.7-.8 1.8-1.3 3-1.3z" fill="currentColor"/></svg>
+          <input id="reg-code" type="text" placeholder="邮箱验证码" maxlength="6" inputmode="numeric">
+          <button type="button" class="btn-send-code" id="send-reg-code">发送验证码</button>
+        </div>
+        <button type="submit" class="btn-primary btn-lg" id="register-btn">注 册</button>
+      </form>
+      <!-- 忘记密码 -->
+      <form id="forgot-form" class="auth-form hidden">
+        <div class="auth-back-row"><button type="button" class="link-btn" id="back-login">← 返回登录</button></div>
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill="currentColor"/></svg>
+          <input id="forgot-email" type="email" placeholder="注册时使用的邮箱" maxlength="40">
+        </div>
+        <div class="field code-field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M12 2L4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3z" fill="currentColor"/></svg>
+          <input id="forgot-code" type="text" placeholder="邮箱验证码" maxlength="6" inputmode="numeric">
+          <button type="button" class="btn-send-code" id="send-forgot-code">发送验证码</button>
+        </div>
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M17 9V7a5 5 0 00-10 0v2H5v13h14V9h-2zm-8-2a3 3 0 016 0v2H9V7z" fill="currentColor"/></svg>
+          <input id="forgot-password" type="password" placeholder="新密码（至少6位）" maxlength="40">
+        </div>
+        <div class="field">
+          <svg viewBox="0 0 24 24" class="field-icon"><path d="M17 9V7a5 5 0 00-10 0v2H5v13h14V9h-2zm-8-2a3 3 0 016 0v2H9V7z" fill="currentColor"/></svg>
+          <input id="forgot-confirm" type="password" placeholder="确认新密码" maxlength="40">
+        </div>
+        <button type="submit" class="btn-primary btn-lg" id="forgot-btn">重置密码</button>
+      </form>
+    </div>
+    <p class="auth-footer">Jay Chat · 跨网络跨区域实时聊天</p>
+  </div>
+</div>
+
+<!-- ======== 主视图 ======== -->
+<div id="main-view" class="full-view hidden">
+  <!-- 页面容器 -->
+  <div id="tab-pages">
+    <div id="page-home" class="tab-page"></div>
+    <div id="page-contacts" class="tab-page hidden"></div>
+    <div id="page-profile" class="tab-page hidden"></div>
+  </div>
+  <!-- 底部导航 -->
+  <nav class="tabbar glass">
+    <button class="tab-item active" data-tab="home">
+      <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-5v-6h-4v6H5a1 1 0 01-1-1v-9z" fill="currentColor"/></svg>
+      <span>首页</span>
+      <i class="tab-badge hidden" id="badge-home"></i>
+    </button>
+    <button class="tab-item" data-tab="contacts">
+      <svg viewBox="0 0 24 24"><path d="M9 11a4 4 0 100-8 4 4 0 000 8zm0 2c-3.9 0-7 2-7 4.5V20h14v-2.5C16 15 12.9 13 9 13zm8-2a3 3 0 100-6 3 3 0 000 6zm1 2.2c1.8.8 4 2.2 4 4.3V20h-3v-2.5c0-1.4-.6-2.7-1-3.3z" fill="currentColor"/></svg>
+      <span>联系人</span>
+      <i class="tab-badge hidden" id="badge-contacts"></i>
+    </button>
+    <button class="tab-item" data-tab="profile">
+      <svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z" fill="currentColor"/></svg>
+      <span>我的</span>
+    </button>
+  </nav>
+</div>
+
+<!-- 叠加页面栈（聊天/群设置/动态等） -->
+<div id="page-stack"></div>
+
+<!-- 全屏媒体查看器 -->
+<div id="media-viewer" class="hidden"></div>
+
+<!-- 通用弹窗 -->
+<div id="modal-root"></div>
+
+<!-- 长按菜单 -->
+<div id="ctx-menu" class="hidden"></div>
+
+<!-- Toast -->
+<div id="toast-root"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/data.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/home.js"></script>
+<script src="/js/contacts.js"></script>
+<script src="/js/profile.js"></script>
+<script src="/js/chat.js"></script>
+<script src="/js/group.js"></script>
+<script src="/js/friend.js"></script>
+<script src="/js/moments.js"></script>
+<script src="/js/admin.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

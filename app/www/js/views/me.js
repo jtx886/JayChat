@@ -3,8 +3,10 @@
   const { JC } = window;
   const store = JC.store;
 
+  const APP_VERSION = '1.2.0';
+
   const Me = {
-    data: () => ({ nameQuota: 2, showName: false, newName: '' }),
+    data: () => ({ nameQuota: 2, showName: false, newName: '', showAbout: false }),
     computed: { store() { return store; } },
     async mounted() {
       try { this.nameQuota = (await JC.api('GET', '/api/users/name-quota')).remaining; } catch (e) { }
@@ -16,11 +18,9 @@
         inp.onchange = async () => {
           const f = await JC.compressImage(inp.files[0]);
           try {
-            const fd = new FormData(); fd.append('file', f);
-            const res = await fetch(JC.serverUrl() + '/api/users/avatar', { method: 'POST', headers: { Authorization: 'Bearer ' + store.token }, body: fd });
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error || '上传失败');
-            store.me.avatar = json.avatar;
+            const r = await JC.upload(f);
+            await JC.api('POST', '/api/users/avatar-url', { url: r.url });
+            store.me.avatar = r.url;
             JC.toast('头像已更新');
           } catch (e) { JC.toast(e.message); }
         };
@@ -47,41 +47,48 @@
           <div class="card" style="margin:10px 12px;padding:20px;display:flex;align-items:center;gap:16px;">
             <div style="cursor:pointer;position:relative;" @click="changeAvatar">
               <UI.Avatar :src="store.me?.avatar" :name="store.me?.username" :size="72" :radius="22"/>
-              <div style="position:absolute;bottom:-4px;right:-4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:12px;">📷</div>
+              <div style="position:absolute;bottom:-4px;right:-4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;color:#0a84ff;"><UI.Icon name="camera" :size="13"/></div>
             </div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:21px;font-weight:800;display:flex;align-items:center;gap:8px;">{{store.me?.username}}</div>
-              <div style="font-size:12px;color:#8e8e93;margin-top:4px;">点击头像更换 · 剩余改名次数 {{nameQuota}}/周</div>
+              <div style="font-size:12px;color:#8e8e93;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{store.me?.email || ''}}</div>
+              <div style="font-size:11px;color:#a9abb2;margin-top:2px;">点击头像更换 · 剩余改名次数 {{nameQuota}}/周</div>
             </div>
           </div>
 
           <div class="list-card">
             <div class="row" @click="showName=true">
-              <div class="notif-ico" style="background:rgba(10,132,255,.12);">✏️</div>
+              <div class="notif-ico" style="background:rgba(10,132,255,.12);color:#0a84ff;"><UI.Icon name="edit" :size="17"/></div>
               <div class="row-title">修改名字</div>
               <span style="font-size:12px;color:#a9abb2;">一周限 2 次</span>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
             <div class="row" @click="publish">
-              <div class="notif-ico" style="background:rgba(255,159,10,.12);">✨</div>
+              <div class="notif-ico" style="background:rgba(255,159,10,.12);color:#ff9f0a;"><UI.Icon name="sparkle" :size="17"/></div>
               <div class="row-title">发布动态</div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
             <div class="row" @click="myMoments">
-              <div class="notif-ico" style="background:rgba(94,92,230,.12);">🗂</div>
+              <div class="notif-ico" style="background:rgba(94,92,230,.12);color:#5e5ce6;"><UI.Icon name="folder" :size="17"/></div>
               <div class="row-title">我的动态</div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
             <div class="row" @click="allMoments">
-              <div class="notif-ico" style="background:rgba(48,209,88,.12);">🌐</div>
+              <div class="notif-ico" style="background:rgba(48,209,88,.12);color:#30d158;"><UI.Icon name="globe" :size="17"/></div>
               <div class="row-title">动态广场</div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
           </div>
 
           <div class="list-card" style="margin-top:12px;">
+            <div class="row" @click="showAbout=true">
+              <div class="notif-ico" style="background:rgba(120,120,128,.12);color:#7d7f86;"><UI.Icon name="info" :size="17"/></div>
+              <div class="row-title">关于 Jay Chat</div>
+              <span style="font-size:12px;color:#a9abb2;">v{{APP_VERSION}}</span>
+              <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+            </div>
             <div class="row" @click="doLogout">
-              <div class="notif-ico" style="background:rgba(255,59,48,.1);">🚪</div>
+              <div class="notif-ico" style="background:rgba(255,59,48,.1);color:#ff3b30;"><UI.Icon name="logout" :size="17"/></div>
               <div class="row-title" style="color:#ff3b30;">退出登录</div>
             </div>
           </div>
@@ -93,6 +100,19 @@
           <div class="hint" style="padding:8px 0 0;">本周剩余修改次数：{{nameQuota}}</div>
           <div class="modal-btns"><button class="btn plain" @click="showName=false">取消</button><button class="btn" @click="saveName">保存</button></div>
         </UI.Modal>
+
+        <UI.Modal :show="showAbout" title="关于 Jay Chat" @close="showAbout=false">
+          <div style="text-align:center;padding:6px 0 2px;">
+            <div style="font-size:15px;font-weight:800;">Jay Chat v{{APP_VERSION}}</div>
+            <div style="font-size:12.5px;color:#8e8e93;margin-top:8px;line-height:1.7;">
+              跨网络实时聊天 · 毛玻璃 UI<br/>
+              支持文本 / 图片 / 视频 / 语音 / 引用 / 转发<br/>
+              动画表情包 · 阅后即焚 · 已读回执 · 动态社区<br/>
+              双后端：Node 实时推送 / PHP 轮询
+            </div>
+          </div>
+          <div class="modal-btns"><button class="btn" @click="showAbout=false">好的</button></div>
+        </UI.Modal>
       </div>`
   };
 
@@ -103,10 +123,10 @@
       friends() { return store.friends; },
       visOptions() {
         return [
-          { v: 'public', label: '🌐 公开', desc: '所有人可见' },
-          { v: 'private', label: '🔒 私密', desc: '仅自己可见' },
-          { v: 'visible', label: '👥 指定好友可见', desc: '仅选中的好友可见' },
-          { v: 'hide', label: '🚫 不给谁看', desc: '选中的好友不可见' }
+          { v: 'public', label: '公开', desc: '所有人可见', ico: 'globe', color: '#0a84ff' },
+          { v: 'private', label: '私密', desc: '仅自己可见', ico: 'eye', color: '#7d7f86' },
+          { v: 'visible', label: '指定好友可见', desc: '仅选中的好友可见', ico: 'users', color: '#30d158' },
+          { v: 'hide', label: '不给谁看', desc: '选中的好友不可见', ico: 'close', color: '#ff3b30' }
         ];
       },
       pickedIds() { return Object.keys(this.selected).filter(k => this.selected[k]).map(Number); }
@@ -139,7 +159,7 @@
             content: this.content, media: urls, visibility: this.visibility,
             visibleTo: this.pickedIds, hideFrom: this.pickedIds
           });
-          JC.toast('动态发布成功 🎉');
+          JC.toast('动态发布成功');
           this.$root.back();
           JC.emitBus('moments-refresh');
         } catch (e) { JC.toast(e.message); }
@@ -159,7 +179,7 @@
                 <span @click="rm(i)" style="position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;">✕</span>
               </div>
               <div v-if="media.length<9" @click="pick" style="width:78px;height:78px;border-radius:12px;border:1.5px dashed #c7c9cf;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#a9abb2;">
-                <span style="font-size:24px;">＋</span><span style="font-size:11px;">{{media.length}}/9</span>
+                <UI.Icon name="plus" :size="22"/><span style="font-size:11px;">{{media.length}}/9</span>
               </div>
             </div>
           </div>
@@ -167,6 +187,7 @@
           <div class="section-label">谁可以看</div>
           <div class="list-card">
             <div class="row" v-for="o in visOptions" :key="o.v" @click="visibility=o.v">
+              <div class="notif-ico" :style="{background:'rgba(120,120,128,.08)', color:o.color}"><UI.Icon :name="o.ico" :size="16"/></div>
               <div class="row-title" style="font-size:15px;">{{o.label}}<span style="font-size:11.5px;color:#a9abb2;font-weight:400;margin-left:8px;">{{o.desc}}</span></div>
               <div :style="{width:'21px',height:'21px',borderRadius:'50%',border:visibility===o.v?'none':'2px solid #c7c9cf',background:visibility===o.v?'#0a84ff':'transparent',display:'flex',alignItems:'center',justifyContent:'center'}">
                 <svg v-if="visibility===o.v" viewBox="0 0 24 24" width="13" height="13" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>

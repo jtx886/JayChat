@@ -10,7 +10,7 @@ if (ob_get_level()) ob_end_clean();
 ignore_user_abort(true);
 
 /* ============ server info ============ */
-if ($route === 'server-info') out(['type' => 'php', 'version' => '1.1.0', 'time' => now()]);
+if ($route === 'server-info') out(['type' => 'php', 'version' => '1.2.0', 'time' => now()]);
 
 /* ============ AUTH ============ */
 if ($route === 'auth/send-code' && $method === 'POST') {
@@ -94,6 +94,14 @@ if ($route === 'users/search') {
 if ($route === 'users/avatar' && $method === 'POST') {
     $me = requireAuth();
     $url = saveUpload('image');
+    db()->prepare('UPDATE users SET avatar=? WHERE id=?')->execute([$url, $me['id']]);
+    out(['ok' => true, 'avatar' => $url]);
+}
+
+if ($route === 'users/avatar-url' && $method === 'POST') {
+    $me = requireAuth();
+    $url = body()['url'] ?? '';
+    if (!is_string($url) || strpos($url, '/uploads/') !== 0) fail('头像地址无效');
     db()->prepare('UPDATE users SET avatar=? WHERE id=?')->execute([$url, $me['id']]);
     out(['ok' => true, 'avatar' => $url]);
 }
@@ -201,10 +209,12 @@ if (preg_match('#^friends/(\d+)/moments$#', $route, $m)) {
 /* ============ GROUPS ============ */
 if ($route === 'groups' && $method === 'POST') {
     $me = requireAuth();
-    $name = trim(body()['name'] ?? '');
+    $b = body();
+    $name = trim($b['name'] ?? '');
     if ($name === '') fail('请输入群名称');
     $avatar = '';
     if (!empty($_FILES['file']['tmp_name'])) $avatar = saveUpload('image');
+    elseif (!empty($b['avatar']) && is_string($b['avatar']) && strpos($b['avatar'], '/uploads/') === 0) $avatar = $b['avatar'];
     db()->prepare('INSERT INTO groups (name,avatar,owner_id,created_at) VALUES (?,?,?,?)')->execute([$name, $avatar, $me['id'], now()]);
     $gid = (int)db()->lastInsertId();
     db()->prepare("INSERT INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?, 'owner',?)")->execute([$gid, $me['id'], now()]);
@@ -399,7 +409,15 @@ if ($route === 'messages' && $method === 'POST') {
 }
 
 function handleMessageSend(int $uid, string $convType, int $convId, string $type, string $content, string $mediaUrl, bool $oneTime): array {
-    if (!in_array($type, ['text', 'image', 'video'])) return ['error' => '不支持的消息类型'];
+    if (!in_array($type, ['text', 'image', 'video', 'voice', 'quote'])) return ['error' => '不支持的消息类型'];
+    if ($type === 'quote') { // 引用消息内容为 JSON（防超长）
+        $j = json_decode($content, true);
+        if (!is_array($j) || !isset($j['text'])) return ['error' => '引用消息格式错误'];
+        $j['text'] = mb_substr((string)$j['text'], 0, 2000);
+        $j['quotePreview'] = mb_substr((string)($j['quotePreview'] ?? ''), 0, 80);
+        $j['quoteSender'] = mb_substr((string)($j['quoteSender'] ?? ''), 0, 20);
+        $content = json_encode($j, JSON_UNESCAPED_UNICODE);
+    }
     if ($convType === 'private') {
         if (!areFriends($uid, $convId)) return ['error' => '对方不是你的好友'];
     } elseif ($convType === 'group') {

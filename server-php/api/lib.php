@@ -231,7 +231,7 @@ function touchActive(int $uid): void {
     } catch (Throwable $e) { /* 心跳失败不影响请求，下一个请求会再更新 */ }
 }
 function pubUser(array $u): array {
-    return ['id' => (int)$u['id'], 'username' => $u['username'], 'avatar' => $u['avatar'] ?: '', 'isBot' => !!$u['is_bot'], 'isOfficial' => !!$u['is_official']];
+    return ['id' => (int)$u['id'], 'username' => $u['username'], 'email' => $u['email'] ?? '', 'avatar' => $u['avatar'] ?: '', 'isBot' => !!$u['is_bot'], 'isOfficial' => !!$u['is_official']];
 }
 function pubUserById($id): ?array {
     $st = db()->prepare('SELECT * FROM users WHERE id=?'); $st->execute([(int)$id]);

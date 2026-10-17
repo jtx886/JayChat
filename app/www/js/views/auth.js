@@ -4,13 +4,36 @@
   const store = JC.store;
   const EMAIL_RE = /^[\w.+-]+@qq\.com$|^[\w.+-]+@163\.com$/i;
 
+  // 纯 CSS/SVG 品牌 Logo（气泡 + J）
+  const Logo = {
+    props: { size: { default: 76 } },
+    template: `
+      <svg :width="size" :height="size" viewBox="0 0 120 120" fill="none">
+        <defs>
+          <linearGradient id="jcg1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#0a84ff"/><stop offset="1" stop-color="#5e5ce6"/>
+          </linearGradient>
+          <linearGradient id="jcg2" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0" stop-color="rgba(255,255,255,.45)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/>
+          </linearGradient>
+        </defs>
+        <rect x="6" y="6" width="108" height="108" rx="30" fill="url(#jcg1)"/>
+        <rect x="6" y="6" width="108" height="108" rx="30" fill="url(#jcg2)"/>
+        <path d="M30 38a14 14 0 0 1 14-14h32a14 14 0 0 1 14 14v26a14 14 0 0 1-14 14H52l-14 12V78a14 14 0 0 1-8-12.6z" fill="rgba(255,255,255,.22)"/>
+        <text x="60" y="76" font-size="52" font-weight="800" fill="#fff" text-anchor="middle" font-family="-apple-system,'PingFang SC',sans-serif">J</text>
+        <circle cx="88" cy="34" r="7" fill="#30d158"/>
+        <circle cx="88" cy="34" r="3" fill="#fff"/>
+      </svg>`
+  };
+
   const AuthShell = {
+    components: { Logo },
     template: `
       <div class="page">
         <div class="aurora"><i></i><i></i><i></i></div>
         <div class="page-inner" style="display:flex;flex-direction:column;justify-content:center;padding:30px 8px;">
           <div style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:26px;">
-            <div class="splash-logo" style="width:76px;height:76px;font-size:40px;border-radius:22px;">J</div>
+            <Logo :size="80"/>
             <div class="splash-name" style="font-size:26px;">Jay Chat</div>
             <div style="font-size:12.5px;color:#8e8e93;">跨网络 · 实时通讯 · 遇见有趣的人</div>
           </div>
@@ -21,13 +44,18 @@
 
   // ---------- Login ----------
   const Login = {
-    components: { AuthShell },
-    data: () => ({ account: '', password: '', loading: false, showServer: false, serverUrl: localStorage.getItem('jc_server_url') || '' }),
+    components: { AuthShell, Logo },
+    data: () => ({
+      account: '', password: '', loading: false,
+      showServer: false, serverUrl: localStorage.getItem('jc_server_url') || '',
+      connErr: false, serverHint: ''
+    }),
     methods: {
       async login() {
         if (!this.account.trim()) return JC.toast('请输入用户名或邮箱');
         if (!this.password) return JC.toast('请输入密码');
         this.loading = true;
+        this.connErr = false;
         try {
           const r = await JC.api('POST', '/api/auth/login', { account: this.account.trim(), password: this.password });
           localStorage.setItem('jc_token', r.token);
@@ -40,12 +68,17 @@
           JC.toast('欢迎回来，' + r.user.username);
         } catch (e) {
           JC.toast(e.message);
-          if (/fetch|network|服务器/i.test(e.message)) this.showServer = true;
+          if (/fetch|network|服务器|请求失败/i.test(e.message)) {
+            this.connErr = true;
+            this.serverHint = '当前服务器：' + JC.serverUrl();
+          }
         }
         this.loading = false;
       },
       saveServer() {
-        localStorage.setItem('jc_server_url', this.serverUrl.trim().replace(/\/+$/, ''));
+        const v = this.serverUrl.trim().replace(/\/+$/, '');
+        if (v) localStorage.setItem('jc_server_url', v);
+        else localStorage.removeItem('jc_server_url');
         this.showServer = false;
         JC.detectServerType();
         JC.toast('服务器已保存，正在重试登录…');
@@ -60,10 +93,14 @@
           <span class="link" @click="$root.go('register')">注册新账号</span>
           <span class="link" style="color:#8e8e93;" @click="$root.go('forgot')">忘记密码？</span>
         </div>
-        <div style="text-align:center;margin-top:26px;font-size:12px;color:#a9abb2;" @click="showServer=true">⚙️ 服务器设置</div>
-        <UI.Modal :show="showServer" title="服务器地址" @close="showServer=false">
-          <div class="field" style="margin:0;"><input v-model="serverUrl" placeholder="http://服务器IP:3000"/></div>
-          <div class="modal-btns"><button class="btn plain" @click="showServer=false">取消</button><button class="btn" @click="saveServer">保存</button></div>
+        <div v-if="connErr" class="conn-error" @click="showServer=true">
+          <UI.Icon name="server" :size="14"/> 连接服务器失败 · 点击检查服务器设置
+          <div style="font-size:10px;color:#a9abb2;margin-top:2px;">{{serverHint}}</div>
+        </div>
+        <UI.Modal :show="showServer" title="服务器设置" @close="showServer=false">
+          <div class="hint" style="text-align:left;padding:0 0 8px;">默认使用官方服务器（已内置），一般无需修改。留空恢复默认。</div>
+          <div class="field" style="margin:0;"><input v-model="serverUrl" placeholder="http://jaychat.ct.ws"/></div>
+          <div class="modal-btns"><button class="btn plain" @click="serverUrl=''; saveServer()">恢复默认</button><button class="btn" @click="saveServer">保存</button></div>
         </UI.Modal>
       </AuthShell>`
   };
@@ -106,7 +143,7 @@
           JC.connectSocket();
           await JC.refreshAll();
           JC.requestNotifPermission();
-          JC.toast('注册成功，已自动加入 Jay Chat官方群 🎉');
+          JC.toast('注册成功，已自动加入 Jay Chat官方群');
         } catch (e) { JC.toast(e.message); }
         this.loading = false;
       }

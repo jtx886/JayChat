@@ -9,6 +9,9 @@
     "allowMixedContent": true
   },
   "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
     "LocalNotifications": {
       "smallIcon": "ic_stat_notify",
       "iconColor": "#0a84ff"

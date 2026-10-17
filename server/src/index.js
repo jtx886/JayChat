@@ -49,7 +49,7 @@ function auth(req, res, next) {
 }
 function pubUser(u) {
   if (!u) return null;
-  return { id: u.id, username: u.username, avatar: u.avatar || '', isBot: !!u.isBot, isOfficial: !!u.isOfficial };
+  return { id: u.id, username: u.username, email: u.email || '', avatar: u.avatar || '', isBot: !!u.isBot, isOfficial: !!u.isOfficial };
 }
 function getUser(id) { return db.prepare('SELECT * FROM users WHERE id=?').get(id); }
 function pubUserById(id) { return pubUser(getUser(id)); }
@@ -469,7 +469,17 @@ app.post('/api/messages', auth, (req, res) => {
 });
 
 function handleMessageSend(uid, convType, convId, type, content, mediaUrl, oneTime) {
-  if (!['text', 'image', 'video'].includes(type)) return { error: '不支持的消息类型' };
+  if (!['text', 'image', 'video', 'voice', 'quote'].includes(type)) return { error: '不支持的消息类型' };
+  if (type === 'quote') {
+    let j = null;
+    try { j = JSON.parse(content); } catch (e) { }
+    if (!j || typeof j !== 'object' || typeof j.text !== 'string') return { error: '引用消息格式错误' };
+    j.text = String(j.text).slice(0, 2000);
+    j.quotePreview = String(j.quotePreview || '').slice(0, 80);
+    j.quoteSender = String(j.quoteSender || '').slice(0, 20);
+    j.quoteId = Number(j.quoteId) || 0;
+    content = JSON.stringify(j);
+  }
   let memberIds;
   if (convType === 'private') {
     if (!areFriends(uid, convId)) return { error: '对方不是你的好友' };

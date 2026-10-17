@@ -5,7 +5,7 @@
 
   const MomentCard = {
     props: { m: Object },
-    emits: ['refresh'],
+    emits: ['refresh', 'reply'],
     data: () => ({ viewer: { src: '', type: '' } }),
     computed: {
       gridCls() { const n = this.m.media.length; return n === 1 ? 'g1' : (n === 2 || n === 4 ? 'g2' : 'g3'); },
@@ -30,10 +30,10 @@
         } catch (e) { JC.toast(e.message); }
       },
       commentClick(c) {
-        const actions = [{ label: `回复 @${c.user.username}`, act: 'reply' }];
-        if (c.canDelete) actions.push({ label: '删除评论', act: 'del', danger: true });
+        const actions = [{ label: `回复 @${c.user.username}`, act: 'reply', ico: 'reply' }];
+        if (c.canDelete) actions.push({ label: '删除评论', act: 'del', ico: 'trash', danger: true });
         this.$root.sheet('评论', actions, a => {
-          if (a.act === 'reply') this.$emit('reply', { targetId: c.id, name: c.user.username });
+          if (a.act === 'reply') this.$emit('reply', { momentId: this.m.id, targetId: c.id, name: c.user.username });
           else if (a.act === 'del') {
             JC.api('DELETE', `/api/moments/comments/${c.id}`)
               .then(() => { this.m.comments = this.m.comments.filter(x => x.id !== c.id); JC.toast('评论已删除'); })
@@ -57,7 +57,7 @@
             <div class="moment-time">{{JC.fmtFull(m.createdAt)}}</div>
           </div>
           <span class="vis-tag">{{visText}}</span>
-          <button v-if="m.isMine" class="moment-act" @click="delMoment" style="color:#ff3b30;">🗑</button>
+          <button v-if="m.isMine" class="moment-act" @click="delMoment" style="color:#ff3b30;"><UI.Icon name="trash" :size="16"/></button>
         </div>
         <div class="moment-text" v-if="m.content">{{m.content}}</div>
         <div class="moment-grid" :class="gridCls" v-if="m.media.length">
@@ -67,11 +67,15 @@
           </div>
         </div>
         <div class="moment-foot">
-          <button class="moment-act" :class="{on:m.liked}" @click="like"><span>{{m.liked?'❤️':'🤍'}}</span> {{m.likes.length||''}} 赞</button>
-          <button class="moment-act" @click="$emit('reply',{targetId:0,name:m.user.username})"><span>💬</span> {{m.comments.length||''}} 评论</button>
+          <button class="moment-act" :class="{on:m.liked}" @click="like">
+            <UI.Icon :name="m.liked?'heart-fill':'heart'" :size="16"/> {{m.likes.length||''}} 赞
+          </button>
+          <button class="moment-act" @click="$emit('reply',{momentId:m.id,targetId:0,name:m.user.username})">
+            <UI.Icon name="comment" :size="16"/> {{m.comments.length||''}} 评论
+          </button>
         </div>
         <div class="like-list" v-if="m.likes.length">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="#ff3b30"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.5 4.5 6 4.5c2.1 0 3.6 1.2 6 3.6 2.4-2.4 3.9-3.6 6-3.6 3.5 0 5.5 3.5 4 7.2C19.5 16.3 12 21 12 21z"/></svg>
+          <UI.Icon name="heart-fill" :size="13" style="color:#ff3b30;"/>
           <span v-for="l in m.likes" :key="l.id" style="color:#0a84ff;font-weight:600;">{{l.username}}</span>
         </div>
         <div class="comment-box" v-if="m.comments.length">
@@ -89,8 +93,8 @@
     components: { MomentCard },
     data: () => ({ list: null, replying: null, replyText: '' }),
     computed: { title() { return { all: '动态', friends: '好友动态', mine: '我的动态' }[this.scope] || '动态'; } },
-    async mounted() { await this.load(); JC.onBus('moments-refresh', () => this.load()); },
-    unmounted() { window.__momentsOff = true; },
+    async mounted() { await this.load(); this._off = JC.onBus('moments-refresh', () => this.load()); },
+    unmounted() { if (this._off) JC.offBus('moments-refresh', this._off); },
     methods: {
       async load() {
         try {
@@ -99,12 +103,11 @@
         } catch (e) { JC.toast(e.message); this.list = []; }
       },
       onReply(p) {
-        this.replying = { momentId: p.targetId ? this.findMoment(p.targetId)?.id : this.currentId(), targetId: p.targetId, name: p.name };
-        if (!p.targetId) this.replying.momentId = this.currentId();
+        // p.momentId 由卡片显式传入，确保评论到正确的动态
+        const mid = p.momentId || (p.targetId ? this.list.find(m => m.comments.some(c => c.id === p.targetId))?.id : this.list[0]?.id);
+        this.replying = { momentId: mid, targetId: p.targetId, name: p.name };
         this.$nextTick(() => this.$refs.replyInput?.focus());
       },
-      findMoment(cid) { return this.list.find(m => m.comments.some(c => c.id === cid)); },
-      currentId() { return this.list[0]?.id; },
       async sendReply() {
         if (!this.replyText.trim() || !this.replying) return;
         try {
@@ -145,7 +148,7 @@
     },
     methods: {
       onReply(p) {
-        const mid = p.targetId ? this.list.find(m => m.comments.some(c => c.id === p.targetId))?.id : this.list[0]?.id;
+        const mid = p.momentId || (p.targetId ? this.list.find(m => m.comments.some(c => c.id === p.targetId))?.id : this.list[0]?.id);
         this.replying = { momentId: mid, targetId: p.targetId, name: p.name };
         this.$nextTick(() => this.$refs.replyInput?.focus());
       },
@@ -170,7 +173,7 @@
           </div>
           <div v-if="list===null" style="padding:12px;"><div class="skeleton" style="height:150px;"></div></div>
           <div v-else-if="!list.length" class="empty"><span>该用户暂无公开动态</span></div>
-          <MomentCard v-for="m in list" :key="m.id" :m="m" @refresh="list=null; $forceUpdate()" @reply="onReply"/>
+          <MomentCard v-for="m in list" :key="m.id" :m="m" @refresh="load" @reply="onReply"/>
         </div>
         <transition name="sheet" appear>
           <div v-if="replying" style="position:absolute;left:0;right:0;bottom:0;z-index:20;display:flex;gap:8px;padding:10px;background:rgba(255,255,255,.85);backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,.7);">

@@ -57,7 +57,9 @@
         <transition name="sheet" appear>
           <div class="sheet">
             <div v-if="title" class="sheet-title">{{title}}</div>
-            <div v-for="(a,i) in actions" :key="i" class="sheet-item" :class="{danger:a.danger}" @click="$emit('action',a); if(!a.stay) $emit('close')">{{a.label}}</div>
+            <div v-for="(a,i) in actions" :key="i" class="sheet-item" :class="{danger:a.danger}" @click="$emit('action',a); if(!a.stay) $emit('close')">
+              <UI.Icon v-if="a.ico" :name="a.ico" :size="17" style="vertical-align:-3px;margin-right:7px;"/>{{a.label}}
+            </div>
             <div class="sheet-item sheet-cancel" @click="$emit('close')">取消</div>
           </div>
         </transition>

@@ -285,3 +285,54 @@ input, textarea { user-select: text; font-family: inherit; }
 .center-load { display: flex; justify-content: center; padding: 14px; }
 .page-anim { animation: pageIn .32s cubic-bezier(.32,.72,.36,1); }
 @keyframes pageIn { from { transform: translateX(60%); opacity: .6; } }
+
+/* ---------- v1.2 新增：语音 / 引用 / 搜索 / 录音 ---------- */
+.ic { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+
+/* 语音气泡 */
+.voice-bubble { display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 120px; }
+.voice-play { width: 30px; height: 30px; border-radius: 50%; background: rgba(10,132,255,.15); color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s; }
+.voice-play.on { background: var(--primary); color: #fff; }
+.mine .voice-play { background: rgba(255,255,255,.25); color: #fff; }
+.mine .voice-play.on { background: #fff; color: var(--primary); }
+.voice-bars { display: flex; align-items: center; gap: 2.5px; height: 18px; }
+.voice-bars i { width: 2.5px; height: 6px; border-radius: 2px; background: currentColor; opacity: .75; }
+.voice-bars.on i { animation: voiceWave .7s ease-in-out infinite; }
+@keyframes voiceWave { 0%,100% { height: 5px; } 50% { height: 15px; } }
+.voice-dur { font-size: 13px; font-weight: 600; }
+
+/* 引用消息 */
+.quote-block { background: rgba(120,120,128,.1); border-left: 3px solid var(--primary); border-radius: 8px; padding: 6px 9px; margin-bottom: 6px; cursor: pointer; }
+.mine .quote-block { background: rgba(255,255,255,.18); border-left-color: rgba(255,255,255,.85); }
+.quote-block b { font-size: 11.5px; display: block; margin-bottom: 1px; }
+.quote-block span { font-size: 11.5px; opacity: .75; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.quote-text { white-space: pre-wrap; word-break: break-word; }
+
+/* 引用回复条 & 搜索栏 */
+.reply-bar { display: flex; align-items: center; gap: 9px; padding: 8px 14px; border-top: 1px solid rgba(255,255,255,.7); flex-shrink: 0; position: relative; z-index: 6; }
+.chat-search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin: 6px 12px 0; border-radius: 14px; flex-shrink: 0; position: relative; z-index: 5; background: rgba(255,255,255,.75); backdrop-filter: var(--blur); border: 1px solid var(--glass-border); }
+.chat-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 14px; min-width: 0; }
+.chat-search input::placeholder { color: var(--text-3); }
+.search-close { border: none; background: rgba(120,120,128,.14); color: var(--text-2); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* 录音浮层 */
+.recording-mask { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(10,15,30,.25); backdrop-filter: blur(4px); }
+.rec-card { width: 200px; padding: 22px 18px; border-radius: 22px; background: rgba(252,252,254,.94); backdrop-filter: var(--blur); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; gap: 8px; animation: popIn .2s; }
+.rec-wave { display: flex; align-items: center; gap: 3px; height: 30px; }
+.rec-wave i { width: 3.5px; border-radius: 2px; background: var(--primary); animation: voiceWave .6s ease-in-out infinite; }
+.rec-time { font-size: 21px; font-weight: 800; color: var(--text); }
+.rec-tip { font-size: 11.5px; color: var(--text-2); }
+.rec-cancel { margin-top: 4px; border: none; background: rgba(255,59,48,.1); color: var(--red); font-size: 13.5px; font-weight: 700; padding: 8px 26px; border-radius: 12px; }
+.mic-btn.rec { background: var(--red); }
+.mic-btn.rec svg { stroke: #fff !important; }
+
+/* 连接错误提示（登录页） */
+.conn-error { margin: 14px 16px 0; padding: 10px 14px; border-radius: 12px; background: rgba(255,159,10,.1); border: 1px solid rgba(255,159,10,.3); color: #c77700; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+
+/* 打字中 */
+.title-wrap small.typing { color: var(--primary); }
+
+/* sticker panel 高度微调 & 加载占位 */
+.panel-emoji { height: 300px; }
+.sticker-cell { background: #fff; }
+.sticker-cell img { width: 92%; height: 92%; object-fit: contain; }

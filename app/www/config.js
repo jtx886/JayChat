@@ -1,6 +1,5 @@
 // Jay Chat 全局配置
-// 部署服务器后，将 SERVER_URL 改为你的服务器地址，例如：
-// window.JAY_CONFIG = { SERVER_URL: 'https://your-domain.com' };
+// 默认服务器已内置（APK 无需配置）。如需自建服务器，改这里或登录页底部"服务器设置"。
 window.JAY_CONFIG = {
-  SERVER_URL: '' // 留空 = 自动使用当前访问地址（网页模式）；APK 内请填写服务器地址
+  SERVER_URL: 'http://jaychat.ct.ws'
 };

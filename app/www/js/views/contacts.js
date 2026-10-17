@@ -23,17 +23,17 @@
         <div class="page-inner safe-bottom">
           <div class="list-card" style="margin-top:6px;">
             <div class="row" @click="openReq">
-              <div class="notif-ico" style="background:rgba(10,132,255,.14);">👋</div>
+              <div class="notif-ico" style="background:rgba(10,132,255,.14);color:#0a84ff;"><UI.Icon name="handshake" :size="19"/></div>
               <div class="row-title">好友申请<span v-if="store.friendReqCount>0" class="row-dot" style="margin-left:6px;">{{store.friendReqCount}}</span></div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
             <div class="row" @click="openAllMoments">
-              <div class="notif-ico" style="background:rgba(255,159,10,.14);">🌐</div>
+              <div class="notif-ico" style="background:rgba(255,159,10,.14);color:#ff9f0a;"><UI.Icon name="globe" :size="19"/></div>
               <div class="row-title">动态<span style="font-size:11px;color:#a9abb2;font-weight:400;margin-left:6px;">所有人的动态</span></div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
             <div class="row" @click="openFriendMoments">
-              <div class="notif-ico" style="background:rgba(48,209,88,.14);">🧑‍🤝‍🧑</div>
+              <div class="notif-ico" style="background:rgba(48,209,88,.14);color:#30d158;"><UI.Icon name="users" :size="19"/></div>
               <div class="row-title">好友动态<span style="font-size:11px;color:#a9abb2;font-weight:400;margin-left:6px;">仅好友可见的动态</span></div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
@@ -144,23 +144,23 @@
           <div class="card" style="margin:10px 12px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;">
             <UI.Avatar :src="f.avatar" :name="f.remark||f.username" :online="store.presence[f.id]" :size="84" :radius="24"/>
             <div style="font-size:20px;font-weight:800;">{{f.remark||f.username}}</div>
-            <div style="font-size:12.5px;color:#8e8e93;">{{f.online?'🟢 在线':'⚪ 离线'}} · 昵称 {{f.username}}</div>
+            <div style="font-size:12.5px;color:#8e8e93;">{{f.online?'在线':'离线'}} · 昵称 {{f.username}}</div>
           </div>
           <div class="list-card">
             <div class="row" @click="showRemark=true">
-              <div class="notif-ico" style="background:rgba(10,132,255,.12);">✏️</div>
+              <div class="notif-ico" style="background:rgba(10,132,255,.12);color:#0a84ff;"><UI.Icon name="edit" :size="17"/></div>
               <div class="row-title">设置备注和资料</div>
               <span style="font-size:13px;color:#8e8e93;">{{f.remark||'未设置'}}</span>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
             <div class="row" @click="moments">
-              <div class="notif-ico" style="background:rgba(255,159,10,.12);">🖼</div>
+              <div class="notif-ico" style="background:rgba(255,159,10,.12);color:#ff9f0a;"><UI.Icon name="image" :size="17"/></div>
               <div class="row-title">查看好友动态</div>
               <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
             </div>
           </div>
           <div style="padding:14px 12px;display:flex;flex-direction:column;gap:10px;">
-            <button class="btn" @click="chat">💬 发消息</button>
+            <button class="btn" @click="chat">发消息</button>
             <button class="btn danger" @click="del">删除好友</button>
           </div>
         </div>
@@ -168,6 +168,12 @@
           <div class="field" style="margin:0;"><input v-model="remark" placeholder="备注名（最多 20 字）" maxlength="20"/></div>
           <div class="modal-btns"><button class="btn plain" @click="showRemark=false">取消</button><button class="btn" @click="saveRemark">保存</button></div>
         </UI.Modal>
+      </div>
+      <div class="page" v-else>
+        <UI.NavHeader title="好友资料" @back="$root.back()"></UI.NavHeader>
+        <div class="empty" style="margin-top:120px;"><UI.Icon name="info" :size="46" style="opacity:.4;"/><span>该用户不存在或已不是好友</span>
+          <button class="btn mini" style="margin-top:8px;" @click="$root.back()">返回</button>
+        </div>
       </div>`
   };
 

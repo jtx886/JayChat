@@ -81,7 +81,17 @@
         <!-- splash -->
         <transition name="fade">
           <div class="splash" v-if="!store.booted">
-            <div class="splash-logo">J</div>
+            <svg width="96" height="96" viewBox="0 0 120 120" fill="none" style="animation:splashPop .7s cubic-bezier(.3,1.4,.4,1), floaty 3s ease-in-out 1s infinite;filter:drop-shadow(0 20px 40px rgba(10,100,255,.35));">
+              <defs>
+                <linearGradient id="scg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a84ff"/><stop offset="1" stop-color="#5e5ce6"/></linearGradient>
+                <linearGradient id="scg2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="rgba(255,255,255,.45)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/></linearGradient>
+              </defs>
+              <rect x="6" y="6" width="108" height="108" rx="30" fill="url(#scg1)"/>
+              <rect x="6" y="6" width="108" height="108" rx="30" fill="url(#scg2)"/>
+              <path d="M30 38a14 14 0 0 1 14-14h32a14 14 0 0 1 14 14v26a14 14 0 0 1-14 14H52l-14 12V78a14 14 0 0 1-8-12.6z" fill="rgba(255,255,255,.22)"/>
+              <text x="60" y="76" font-size="52" font-weight="800" fill="#fff" text-anchor="middle" font-family="-apple-system,'PingFang SC',sans-serif">J</text>
+              <circle cx="88" cy="34" r="7" fill="#30d158"/><circle cx="88" cy="34" r="3" fill="#fff"/>
+            </svg>
             <div class="splash-name">Jay Chat</div>
             <div class="splash-dot"></div>
           </div>
@@ -181,6 +191,7 @@
   app.config.globalProperties.Stickers = window.Stickers;
   app.config.errorHandler = (err, vm, info) => console.error('VueError:', err && err.message, info);
   app.component('UI.Avatar', window.UI.Avatar);
+  app.component('UI.Icon', window.UI.Icon);
   app.component('UI.NavHeader', window.UI.NavHeader);
   app.component('UI.ActionSheet', window.UI.ActionSheet);
   app.component('UI.Modal', window.UI.Modal);

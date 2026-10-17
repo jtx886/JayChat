@@ -9,6 +9,8 @@
     if (m.expired && m.sender.id !== store.me.id) return '[已销毁]';
     if (m.type === 'image') return '[图片]';
     if (m.type === 'video') return '[视频]';
+    if (m.type === 'voice') return '[语音]';
+    if (m.type === 'quote') return '[引用] ' + (JC.quoteText(m).text || '');
     return m.content;
   }
 
@@ -27,8 +29,8 @@
       },
       addMenu() {
         this.$root.sheet('添加', [
-          { label: '🔍 添加好友', act: 'addfriend' },
-          { label: '👥 创建群聊', act: 'creategroup' }
+          { label: '添加好友', act: 'addfriend', ico: 'user' },
+          { label: '创建群聊', act: 'creategroup', ico: 'users' }
         ], a => {
           if (a.act === 'addfriend') this.$root.go('addfriend');
           if (a.act === 'creategroup') this.$root.go('creategroup');
@@ -64,7 +66,7 @@
                 <div class="row-title">
                   {{c.name}}
                   <span v-if="c.isOfficial" class="badge-verify"><svg viewBox="0 0 24 24" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span>
-                  <span v-if="c.muted" style="font-size:11px;color:#a9abb2;">🔕</span>
+                  <UI.Icon v-if="c.muted" name="bell-off" :size="13" style="color:#a9abb2;"/>
                 </div>
                 <div class="row-sub" :style="{color: c.unread>0 ? '#1c1c1e' : ''}">{{c.preview}}</div>
               </div>
@@ -85,11 +87,11 @@
     computed: {
       icoStyle() {
         return {
-          friend_accepted: { background: 'rgba(48,209,88,.15)', t: '✅' },
-          like: { background: 'rgba(255,59,48,.12)', t: '❤️' },
-          comment: { background: 'rgba(10,132,255,.12)', t: '💬' },
-          comment_reply: { background: 'rgba(94,92,230,.12)', t: '↩️' },
-          group_invite: { background: 'rgba(255,159,10,.12)', t: '👥' }
+          friend_accepted: { background: 'rgba(48,209,88,.15)', ico: 'check' },
+          like: { background: 'rgba(255,59,48,.12)', ico: 'heart' },
+          comment: { background: 'rgba(10,132,255,.12)', ico: 'comment' },
+          comment_reply: { background: 'rgba(94,92,230,.12)', ico: 'reply' },
+          group_invite: { background: 'rgba(255,159,10,.12)', ico: 'users' }
         };
       }
     },
@@ -118,7 +120,9 @@
           </div>
           <div class="list-card" v-else>
             <div class="notif-item" :class="{unread:!n.isRead}" v-for="n in list" :key="n.id" @click="open(n)">
-              <div class="notif-ico" :style="{background: (icoStyle[n.type]||{}).background}">{{(icoStyle[n.type]||{}).t||'🔔'}}</div>
+              <div class="notif-ico" :style="{background: (icoStyle[n.type]||{}).background, color: '#0a84ff'}">
+                <UI.Icon :name="(icoStyle[n.type]||{}).ico || 'bell'" :size="18"/>
+              </div>
               <div class="notif-content">
                 <b style="color:#1c1c1e;">{{n.actor.username}}</b> {{n.content}}
                 <div class="notif-time">{{JC.fmtFull(n.createdAt)}}</div>
@@ -167,26 +171,28 @@
 
   // ================= Create group =================
   const CreateGroup = {
-    data: () => ({ name: '', avatar: '', selected: {} }),
+    data: () => ({ name: '', avatar: '', selected: {}, creating: false }),
     computed: { friends() { return store.friends; }, count() { return Object.values(this.selected).filter(Boolean).length; } },
     methods: {
-      async pickAvatar() {
+      pickAvatar() {
         const inp = document.createElement('input');
         inp.type = 'file'; inp.accept = 'image/*';
         inp.onchange = async () => {
           const f = await JC.compressImage(inp.files[0]);
-          try { const r = await JC.upload(f); this.avatar = r.url; JC.toast('群头像已设置'); } catch (e) { JC.toast(e.message); }
+          try {
+            const r = await JC.upload(f);
+            this.avatar = r.url;
+            JC.toast('群头像已设置');
+          } catch (e) { JC.toast(e.message); }
         };
         inp.click();
       },
       async create() {
         if (!this.name.trim()) return JC.toast('请输入群名称');
+        if (this.creating) return;
+        this.creating = true;
         try {
-          const fd = new FormData();
-          const r = await JC.api('POST', '/api/groups', { name: this.name.trim() });
-          if (this.avatar) {
-            // re-upload via dedicated endpoint not needed; groups POST accepts avatar file only; keep default
-          }
+          const r = await JC.api('POST', '/api/groups', { name: this.name.trim(), avatar: this.avatar });
           const ids = Object.keys(this.selected).filter(k => this.selected[k]).map(Number);
           if (ids.length) await JC.api('POST', `/api/groups/${r.groupId}/invite`, { userIds: ids });
           JC.toast('群聊创建成功');
@@ -194,6 +200,7 @@
           await JC.refreshAll();
           setTimeout(() => this.$root.go('chat', { convType: 'group', convId: r.groupId, name: this.name.trim(), avatar: this.avatar }), 100);
         } catch (e) { JC.toast(e.message); }
+        this.creating = false;
       }
     },
     template: `
@@ -203,7 +210,7 @@
           <div class="row" style="margin:0 12px;border-radius:16px 16px 0 0;overflow:hidden;" >
             <div style="width:56px;height:56px;border-radius:14px;background:#dfe3ea;overflow:hidden;flex-shrink:0;cursor:pointer;" @click="pickAvatar">
               <img v-if="avatar" :src="JC.mediaUrl(avatar)" style="width:100%;height:100%;object-fit:cover;"/>
-              <div v-else style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px;">📷</div>
+              <div v-else style="display:flex;align-items:center;justify-content:center;height:100%;color:#8e8e93;"><UI.Icon name="camera" :size="22"/></div>
             </div>
             <input v-model="name" placeholder="群名称" style="flex:1;border:none;outline:none;background:transparent;font-size:16px;font-weight:600;"/>
           </div>
@@ -218,7 +225,7 @@
             </div>
             <div v-if="!friends.length" class="empty"><span>还没有好友，先去添加好友吧</span></div>
           </div>
-          <div style="padding:16px 12px;"><button class="btn" @click="create">创建群聊（{{count+1}} 人）</button></div>
+          <div style="padding:16px 12px;"><button class="btn" :disabled="creating" @click="create">{{creating?'创建中…':'创建群聊（'+(count+1)+' 人）'}}</button></div>
         </div>
       </div>`
   };

@@ -30,14 +30,21 @@ jaychat/
 
 ## 🚀 部署服务器（必须！跨网络聊天的前提）
 
-APP 需要连接一个公网服务器。推荐 Render 免费部署：
+APP 需要连接一个公网服务器，两种方案任选（APP 自动识别，无需改代码）：
 
+### 方案一：InfinityFree 免费 PHP 虚拟主机（伪实时，1~3 秒延迟）
+1. 下载仓库里的 **`jaychat-infinityfree.zip`**（PHP 版一键部署包）
+2. 按照 **[部署教程-InfinityFree.md](部署教程-InfinityFree.md)** 注册主机 → 建 MySQL → 改 `api/config.php` → FTP 上传 → 开 SSL
+3. 得到 `https://xxx.epizy.com` 后，APP 登录页「⚙️ 服务器设置」填入即可
+
+### 方案二：Render 免费 Node 部署（WebSocket 真·实时，推荐）
 1. 把本仓库推送到你的 GitHub
 2. 打开 [render.com](https://render.com) → **New +** → **Blueprint** → 选择本仓库 → Apply
 3. 部署完成后会得到地址：`https://xxxx.onrender.com`
 4. 打开 APP → 登录页底部「⚙️ 服务器设置」→ 填入该地址 → 保存
 
-> 也可以部署到任何能跑 Node.js 的服务器：`cd server && npm install && npm start`（端口 3000）。
+> Node 版也可部署到任何能跑 Node.js 的服务器：`cd server && npm install && npm start`（端口 3000）。
+> 两版后端数据库独立，切换部署方式后需要重新注册账号。
 
 ## 📱 打包 APK
 

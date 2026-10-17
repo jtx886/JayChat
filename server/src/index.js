@@ -707,6 +707,23 @@ app.get('/api/friends/requests/count', auth, (req, res) => {
   res.json({ count: db.prepare("SELECT COUNT(*) c FROM friend_requests WHERE to_id=? AND status='pending'").get(req.uid).c });
 });
 
+// server info (client auto-detects node/php transport)
+app.get('/api/server-info', (req, res) => {
+  res.json({ type: 'node', version: '1.1.0', time: Date.now() });
+});
+
+// REST read receipt (parity with php mode)
+app.post('/api/read', auth, (req, res) => {
+  const { convType, convId, lastReadMsgId } = req.body || {};
+  const type = convType === 'group' ? 'group' : 'private';
+  const cid = Number(convId), last = Number(lastReadMsgId) || 0;
+  const canon = type === 'private' ? Math.min(cid, req.uid) : cid;
+  ensureReadRow(type, canon, req.uid);
+  db.prepare('UPDATE conv_reads SET last_read_at=?, last_read_msg_id=? WHERE conv_type=? AND conv_id=? AND user_id=?')
+    .run(Date.now(), last, type, canon, req.uid);
+  res.json({ ok: true });
+});
+
 // ---------- SOCKET.IO ----------
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' }, maxHttpBufferSize: 10e6 });

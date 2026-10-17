@@ -33,6 +33,7 @@
           localStorage.setItem('jc_token', r.token);
           store.token = r.token;
           store.me = r.user;
+          await JC.detectServerType();
           JC.connectSocket();
           await JC.refreshAll();
           JC.requestNotifPermission();
@@ -46,6 +47,7 @@
       saveServer() {
         localStorage.setItem('jc_server_url', this.serverUrl.trim().replace(/\/+$/, ''));
         this.showServer = false;
+        JC.detectServerType();
         JC.toast('服务器已保存，正在重试登录…');
       }
     },
@@ -100,6 +102,7 @@
           localStorage.setItem('jc_token', r.token);
           store.token = r.token;
           store.me = r.user;
+          await JC.detectServerType();
           JC.connectSocket();
           await JC.refreshAll();
           JC.requestNotifPermission();

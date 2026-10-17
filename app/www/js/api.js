@@ -132,11 +132,26 @@
     return Object.keys(map).sort().map(L => ({ letter: L, items: map[L].sort((a, b) => _coll ? _coll.compare(nameFn(a), nameFn(b)) : 0) }));
   }
 
-  // ---- socket ----
+  // ---- server type & realtime transport ----
   let socket = null;
+  let pollTimer = null;
+  let serverType = 'node';
+  let lastMsgId = 0, lastNotifId = 0, lastReads = {};
+
+  async function detectServerType() {
+    try {
+      const r = await fetch(serverUrl() + '/api/server-info', { method: 'GET' });
+      const j = await r.json();
+      if (j.type === 'php') serverType = 'php';
+      else serverType = 'node';
+    } catch (e) { serverType = 'node'; }
+    return serverType;
+  }
+
   function connectSocket() {
-    if (socket) { socket.disconnect(); socket = null; }
+    stopRealtime();
     if (!store.token) return;
+    if (serverType === 'php') { startPoller(); return; }
     socket = io(serverUrl(), { auth: { token: store.token }, transports: ['websocket', 'polling'], reconnectionDelayMax: 5000 });
     socket.on('connect', () => {
       window.__socketReady = true;
@@ -166,8 +181,94 @@
     socket.on('typing', d => emitBus('typing', d));
     socket.io.on('reconnect', () => { refreshAll(); });
   }
-  function disconnectSocket() { if (socket) { socket.disconnect(); socket = null; } }
+  function disconnectSocket() { stopRealtime(); }
   function getSocket() { return socket; }
+
+  // ---- PHP polling mode (InfinityFree 等不支持 WebSocket 的主机) ----
+  function startPoller() {
+    lastMsgId = 0; lastNotifId = 0; lastReads = {};
+    const tick = async () => {
+      try {
+        const chat = window.__chatPage;
+        const activeType = chat ? chat.convType : '';
+        const activeId = chat ? chat.id : 0;
+        const q = new URLSearchParams({
+          activeType, activeId: String(activeId),
+          lastMsgId: String(lastMsgId), lastNotifId: String(lastNotifId)
+        });
+        const d = await api('GET', '/api/sync?' + q.toString());
+        // presence
+        const pres = {};
+        for (const id of d.presence || []) pres[id] = true;
+        const changedPresence = JSON.stringify(pres) !== JSON.stringify(store.presence);
+        store.presence = pres;
+        if (changedPresence) emitBus('presence', {});
+        // conversations
+        if (Array.isArray(d.conversations)) store.conversations = d.conversations;
+        // badges
+        store.unreadNotifs = d.unreadNotifs || 0;
+        store.friendReqCount = d.friendReqCount || 0;
+        // new notifications
+        for (const n of d.newNotifications || []) {
+          lastNotifId = Math.max(lastNotifId, n.id);
+          if (n.type === 'friend_accepted') JC.localNotify('Jay Chat', n.actor.username + ' ' + n.content);
+          else if (n.type === 'like' || n.type === 'comment' || n.type === 'comment_reply') JC.localNotify('Jay Chat', n.actor.username + ' ' + n.content);
+          emitBus('notification', n);
+        }
+        // active conversation messages
+        if (d.active && Array.isArray(d.active.messages)) {
+          for (const m of d.active.messages) {
+            lastMsgId = Math.max(lastMsgId, m.id);
+            emitBus('msg-new', m);
+            if (document.hidden && m.sender && m.sender.id !== store.me?.id) {
+              JC.localNotify(m.sender.username, m.type === 'text' ? m.content : (m.type === 'image' ? '[图片]' : '[视频]'));
+            }
+          }
+          // read updates
+          const reads = d.active.reads || {};
+          for (const [uid, rid] of Object.entries(reads)) {
+            const u = Number(uid);
+            if (d.active.convType === 'group') {
+              if (lastReads[u] !== rid) emitBus('read-update', { convType: 'group', convId: d.active.convId, userId: u, lastReadMsgId: rid });
+            } else {
+              if (lastReads[u] !== rid && u === d.active.convId) emitBus('read-update', { convType: 'private', convId: d.active.convId, userId: u, lastReadMsgId: rid });
+            }
+            lastReads[u] = rid;
+          }
+        }
+      } catch (e) { /* silent retry */ }
+      pollTimer = setTimeout(tick, document.hidden ? 4000 : 2000);
+    };
+    tick();
+  }
+  function stopRealtime() {
+    if (socket) { socket.disconnect(); socket = null; }
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  }
+
+  // ---- send message (transport agnostic) ----
+  async function sendMessage(payload, ack) {
+    if (serverType === 'php') {
+      try {
+        const r = await api('POST', '/api/messages', payload);
+        // 本地即时回显（chat 页有去重），轮询也会带来
+        emitBus('msg-new', r.message);
+        if (lastMsgId < r.message.id) lastMsgId = r.message.id;
+        ack && ack({ id: r.message.id, createdAt: r.message.createdAt });
+      } catch (e) { ack && ack({ error: e.message }); }
+      return;
+    }
+    getSocket()?.emit('message:send', payload, ack);
+  }
+
+  // ---- mark read (transport agnostic) ----
+  function markRead(convType, convId, lastReadMsgId) {
+    if (serverType === 'php') {
+      api('POST', '/api/read', { convType, convId, lastReadMsgId }).catch(() => { });
+      return;
+    }
+    getSocket()?.emit('read', { convType, convId, lastReadMsgId });
+  }
 
   // tiny event bus
   const bus = {};
@@ -232,6 +333,7 @@
     store, api, toast, upload, compressImage, mediaUrl, serverUrl,
     fmtFull, fmtChat, pinyinLetter, groupByLetter,
     connectSocket, disconnectSocket, getSocket, onBus, emitBus,
+    detectServerType, sendMessage, markRead,
     refreshConversations, refreshFriends, refreshBadges, refreshAll,
     logout, requestNotifPermission, localNotify
   };

@@ -82,7 +82,7 @@
       },
       markRead() {
         const last = this.list[this.list.length - 1];
-        if (last) JC.getSocket()?.emit('read', { convType: this.convType, convId: this.id, lastReadMsgId: last.id });
+        if (last) JC.markRead(this.convType, this.id, last.id);
         // clear unread badge for this conv
         const c = store.conversations.find(c => c.convType === this.convType && c.convId === this.id);
         if (c) c.unread = 0;
@@ -217,7 +217,7 @@
         this.sending = true;
         this.text = '';
         this.atAI = false; this.aiPop = false;
-        JC.getSocket()?.emit('message:send', { convType: this.convType, convId: this.id, type: 'text', content }, r => {
+        JC.sendMessage({ convType: this.convType, convId: this.id, type: 'text', content }, r => {
           if (r && r.error) JC.toast(r.error);
         });
         this.sending = false;
@@ -247,7 +247,7 @@
           try {
             const file = it.type === 'image' ? await JC.compressImage(it.file) : it.file;
             const r = await JC.upload(file, p => { this.uploadPct = Math.round(p * 100); });
-            JC.getSocket()?.emit('message:send', {
+            JC.sendMessage({
               convType: this.convType, convId: this.id, type: it.type,
               mediaUrl: r.url, oneTime: this.oneTime, content: ''
             }, resp => { if (resp && resp.error) JC.toast(resp.error); });
@@ -263,7 +263,7 @@
         // resolve local sticker to sticker:<id> form if from local cats
         let final = url;
         for (const c of Stickers.STICKER_CATS) for (const s of c.stickers) if (s.url === url) final = 'sticker:' + s.id;
-        JC.getSocket()?.emit('message:send', { convType: this.convType, convId: this.id, type: 'image', mediaUrl: final, content: '' }, r => { if (r && r.error) JC.toast(r.error); });
+        JC.sendMessage({ convType: this.convType, convId: this.id, type: 'image', mediaUrl: final, content: '' }, r => { if (r && r.error) JC.toast(r.error); });
       },
       addEmoji(e) { this.text += e; },
       togglePanel(p) { this.panel = this.panel === p ? '' : p; },

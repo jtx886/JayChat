@@ -20,6 +20,7 @@
         try {
           const r = await JC.api('GET', '/api/auth/me');
           store.me = r.user;
+          await JC.detectServerType();
           JC.connectSocket();
           await JC.refreshAll();
           JC.requestNotifPermission();

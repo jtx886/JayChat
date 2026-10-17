@@ -1,0 +1,46 @@
+name: Build Jay Chat APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('app/android/**/*.gradle') }}
+
+      - name: Install server deps (ensures www assets referenced exist)
+        run: cd server && npm install
+
+      - name: Build Android APK
+        run: |
+          cd app
+          npm install
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JayChat-APK
+          path: app/android/app/build/outputs/apk/release/app-release.apk

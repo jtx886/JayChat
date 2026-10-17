@@ -1,0 +1,21 @@
+# Jay Chat 后端一键部署配置（Render.com 免费层）
+# 1. 把本仓库推送到 GitHub
+# 2. 在 https://render.com 新建 → Blueprint → 选择本仓库
+# 3. 部署完成后得到 https://xxx.onrender.com
+# 4. APK 登录页点「服务器设置」填入该地址即可
+services:
+  - type: web
+    name: jaychat-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/auth/me
+    disk:
+      name: jaychat-data
+      mountPath: /opt/render/project/src/server/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

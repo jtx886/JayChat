@@ -1,0 +1,17 @@
+{
+  "appId": "com.jaychat.app",
+  "appName": "Jay Chat",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_notify",
+      "iconColor": "#0a84ff"
+    }
+  }
+}

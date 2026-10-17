@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Jay Chat</string>
+    <string name="title_activity_main">Jay Chat</string>
+    <string name="package_name">com.jaychat.app</string>
+    <string name="custom_url_scheme">com.jaychat.app</string>
+</resources>

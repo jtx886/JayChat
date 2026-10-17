@@ -145,6 +145,19 @@ function install(PDO $pdo): void {
             is_read TINYINT DEFAULT 0,
             created_at INTEGER NOT NULL
         )",
+        "CREATE TABLE IF NOT EXISTS tim_accounts (
+            id $auto,
+            user_id INTEGER NOT NULL,
+            imported_at INTEGER NOT NULL,
+            UNIQUE(user_id)
+        )",
+        "CREATE TABLE IF NOT EXISTS tim_groups (
+            id $auto,
+            group_id INTEGER NOT NULL,
+            tim_group_id VARCHAR(64) NOT NULL,
+            synced_at INTEGER DEFAULT 0,
+            UNIQUE(group_id)
+        )",
     ];
     foreach ($tables as $t) $pdo->exec($t);
     seed($pdo);
@@ -271,6 +284,32 @@ function ensureReadRow(string $type, int $convId, int $uid): void {
 function notify(int $userId, string $type, int $actorId, string $refType, int $refId, string $content): void {
     db()->prepare('INSERT INTO notifications (user_id,type,actor_id,ref_type,ref_id,content,is_read,created_at) VALUES (?,?,?,?,?,?,0,?)')
         ->execute([$userId, $type, $actorId, $refType, $refId, $content, now()]);
+    $nid = (int)db()->lastInsertId();
+    if (function_exists('tim_signal_user')) {
+        $st = db()->prepare('SELECT COUNT(*) c FROM notifications WHERE user_id=? AND is_read=0'); $st->execute([$userId]);
+        tim_signal_user($userId, 'notification', [
+            'id' => $nid, 'type' => $type,
+            'actor' => pubUserById($actorId),
+            'refType' => $refType, 'refId' => $refId, 'content' => $content,
+            'createdAt' => now(), 'unread' => (int)$st->fetch()['c'],
+        ], $actorId);
+    }
+}
+
+/* ---------- 心跳 & 在线状态广播（TIM 实时） ---------- */
+function heartbeatPing(int $uid): array {
+    $st = db()->prepare('SELECT last_active FROM users WHERE id=?'); $st->execute([$uid]);
+    $prev = (int)($st->fetch()['last_active'] ?? 0);
+    db()->prepare('UPDATE users SET last_active=? WHERE id=?')->execute([now(), $uid]);
+    $wasOffline = $prev < now() - ONLINE_WINDOW;
+    if (function_exists('tim_broadcast_presence')) {
+        // 仅在“离线→在线”跳变或每 3 次心跳时广播一次，控制信令量
+        $r = random_int(1, 3);
+        if ($wasOffline || $r === 1) {
+            register_shutdown_function(function () use ($uid) { tim_broadcast_presence($uid, true, true); });
+        }
+    }
+    return ['online' => onlineIds(), 't' => now()];
 }
 
 /* ---------- message output ---------- */
@@ -330,7 +369,7 @@ function conversationsOut(int $uid): array {
         $st2 = db()->prepare("SELECT * FROM messages WHERE conv_type='group' AND conv_id=? ORDER BY id DESC LIMIT 1");
         $st2->execute([$gid]);
         $last = $st2->fetch();
-        if (!$last) continue;
+        if (!$last && !$g['is_official']) continue;
         $st3 = db()->prepare("SELECT * FROM conv_reads WHERE conv_type='group' AND conv_id=? AND user_id=?");
         $st3->execute([$gid, $uid]);
         $read = $st3->fetch();
@@ -346,7 +385,7 @@ function conversationsOut(int $uid): array {
             'isOfficial' => !!$g['is_official'], 'unread' => $unread, 'muted' => !!($read['muted'] ?? 0),
             'lastReadMsgId' => (int)($read['last_read_msg_id'] ?? 0),
             'memberCount' => $summary['memberCount'], 'onlineCount' => $summary['onlineCount'],
-            'last' => msgOut($last, $uid),
+            'last' => $last ? msgOut($last, $uid) : null,
         ];
     }
     usort($list, fn($a, $b) => ($b['last']['createdAt'] ?? 0) <=> ($a['last']['createdAt'] ?? 0));
@@ -367,6 +406,8 @@ function sendCodeMail(string $email, string $code): void {
         $mail->Password = SMTP_PASS;
         $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
         $mail->Port = SMTP_PORT;
+        $mail->Timeout = 15;          // 避免 SMTP 不可达时长时间挂起请求
+        $mail->SMTPKeepAlive = false;
         $mail->CharSet = 'UTF-8';
         $mail->setFrom(SMTP_FROM, SMTP_FROM_NAME);
         $mail->addAddress($email);
@@ -424,4 +465,12 @@ function handleAIReply(array $group, array $userMsg): void {
     $sender = pubUserById($userMsg['sender_id']);
     db()->prepare("INSERT INTO messages (conv_type,conv_id,sender_id,type,content,media_url,one_time,expired_for,created_at) VALUES ('group',?,?,?,?,?,0,'[]',?)")
         ->execute([$group['id'], $bot['id'], 'text', '@' . $sender['username'] . ' ' . $reply, '', now()]);
+    // AI 回复后推送实时信号，群内实时可见
+    if (function_exists('tim_signal_conv')) {
+        $mid = (int)db()->lastInsertId();
+        $st = db()->prepare('SELECT * FROM messages WHERE id=?'); $st->execute([$mid]);
+        if ($row = $st->fetch()) tim_signal_conv('group', (int)$group['id'], 'msg', msgOut($row, 0));
+    }
 }
+
+require_once __DIR__ . '/tim.php';

@@ -46,10 +46,17 @@ if ($route === 'auth/register' && $method === 'POST') {
         ->execute([$username, $email, password_hash($password, PASSWORD_DEFAULT), '', now()]);
     $uid = (int)db()->lastInsertId();
     $st = db()->prepare('SELECT * FROM groups WHERE is_official=1'); $st->execute();
-    if ($g = $st->fetch()) insertIgnore('group_members', ['group_id', 'user_id', 'role', 'joined_at'], [$g['id'], $uid, 'member', now()]);
+    if ($g = $st->fetch()) {
+        insertIgnore('group_members', ['group_id', 'user_id', 'role', 'joined_at'], [$g['id'], $uid, 'member', now()]);
+        $ogid = (int)$g['id'];
+        // 后台把新用户加入腾讯官方群，避免拖慢注册响应
+        register_shutdown_function(function () use ($ogid, $uid) {
+            try { tim_add_group_member($ogid, $uid); } catch (Throwable $e) { }
+        });
+    }
     $token = bin2hex(random_bytes(24));
     db()->prepare('INSERT INTO tokens (token,user_id,created_at) VALUES (?,?,?)')->execute([$token, $uid, now()]);
-    out(['ok' => true, 'token' => $token, 'user' => pubUserById($uid)]);
+    out(['ok' => true, 'token' => $token, 'user' => pubUserById($uid), 'tim' => tim_creds($uid)]);
 }
 
 if ($route === 'auth/login' && $method === 'POST') {
@@ -61,7 +68,10 @@ if ($route === 'auth/login' && $method === 'POST') {
     if (!password_verify($password, $u['password_hash'])) fail('密码错误');
     $token = bin2hex(random_bytes(24));
     db()->prepare('INSERT INTO tokens (token,user_id,created_at) VALUES (?,?,?)')->execute([$token, (int)$u['id'], now()]);
-    out(['ok' => true, 'token' => $token, 'user' => pubUser($u)]);
+    $uid = (int)$u['id'];
+    // 后台补齐 Tencent 群成员，避免拖慢登录响应
+    register_shutdown_function(function () use ($uid) { try { tim_sync_user_groups($uid); } catch (Throwable $e) { } });
+    out(['ok' => true, 'token' => $token, 'user' => pubUser($u), 'tim' => tim_creds($uid)]);
 }
 
 if ($route === 'auth/reset-password' && $method === 'POST') {
@@ -79,7 +89,18 @@ if ($route === 'auth/reset-password' && $method === 'POST') {
 
 if ($route === 'auth/me') {
     $u = requireAuth();
-    out(['user' => pubUser($u)]);
+    out(['user' => pubUser($u), 'tim' => tim_creds((int)$u['id'])]);
+}
+
+/* ============ Tencent IM 实时通道 ============ */
+if ($route === 'tim/credentials') {
+    $me = requireAuth();
+    out(tim_creds((int)$me['id']));
+}
+
+if ($route === 'heartbeat' && $method === 'POST') {
+    $me = requireAuth();
+    out(heartbeatPing((int)$me['id']));
 }
 
 /* ============ USERS ============ */
@@ -95,6 +116,7 @@ if ($route === 'users/avatar' && $method === 'POST') {
     $me = requireAuth();
     $url = saveUpload('image');
     db()->prepare('UPDATE users SET avatar=? WHERE id=?')->execute([$url, $me['id']]);
+    tim_update_profile((int)$me['id'], null, $url);
     out(['ok' => true, 'avatar' => $url]);
 }
 
@@ -103,6 +125,7 @@ if ($route === 'users/avatar-url' && $method === 'POST') {
     $url = body()['url'] ?? '';
     if (!is_string($url) || strpos($url, '/uploads/') !== 0) fail('头像地址无效');
     db()->prepare('UPDATE users SET avatar=? WHERE id=?')->execute([$url, $me['id']]);
+    tim_update_profile((int)$me['id'], null, $url);
     out(['ok' => true, 'avatar' => $url]);
 }
 
@@ -117,6 +140,7 @@ if ($route === 'users/name' && $method === 'POST') {
     if (count($recent) >= 2) fail('一周内只能修改 2 次昵称');
     $recent[] = now();
     db()->prepare('UPDATE users SET username=?, name_changes=? WHERE id=?')->execute([$name, json_encode($recent), $me['id']]);
+    tim_update_profile((int)$me['id'], $name, null);
     out(['ok' => true, 'username' => $name, 'remaining' => 2 - count($recent)]);
 }
 
@@ -140,6 +164,8 @@ if ($route === 'friends/request' && $method === 'POST') {
     $st->execute([$me['id'], $toId]);
     if ($st->fetch()) fail('已发送过申请，等待对方通过');
     db()->prepare("INSERT INTO friend_requests (from_id,to_id,status,created_at) VALUES (?,?, 'pending',?)")->execute([$me['id'], $toId, now()]);
+    $st = db()->prepare("SELECT COUNT(*) c FROM friend_requests WHERE to_id=? AND status='pending'"); $st->execute([$toId]);
+    tim_signal_user($toId, 'friendreq', ['from' => pubUser($me), 'count' => (int)$st->fetch()['c']], (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -218,6 +244,7 @@ if ($route === 'groups' && $method === 'POST') {
     db()->prepare('INSERT INTO groups (name,avatar,owner_id,created_at) VALUES (?,?,?,?)')->execute([$name, $avatar, $me['id'], now()]);
     $gid = (int)db()->lastInsertId();
     db()->prepare("INSERT INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?, 'owner',?)")->execute([$gid, $me['id'], now()]);
+    tim_ensure_group($gid);
     out(['ok' => true, 'groupId' => $gid]);
 }
 
@@ -254,13 +281,20 @@ if (preg_match('#^groups/(\d+)$#', $route, $m) && $method === 'GET') {
 
 if (preg_match('#^groups/(\d+)/name$#', $route, $m) && $method === 'POST') {
     $me = requireAuth(); checkGroupPerm((int)$m[1], (int)$me['id'], ['owner', 'admin']);
-    db()->prepare('UPDATE groups SET name=? WHERE id=?')->execute([mb_substr(trim(body()['name'] ?? ''), 0, 20), $m[1]]);
+    $name = mb_substr(trim(body()['name'] ?? ''), 0, 20);
+    db()->prepare('UPDATE groups SET name=? WHERE id=?')->execute([$name, $m[1]]);
+    tim_update_group((int)$m[1], $name, null);
+    tim_signal_group((int)$m[1], 'group-update', ['groupId' => (int)$m[1]], (int)$me['id']);
     out(['ok' => true]);
 }
 
 if (preg_match('#^groups/(\d+)/avatar$#', $route, $m) && $method === 'POST') {
     $me = requireAuth(); checkGroupPerm((int)$m[1], (int)$me['id'], ['owner', 'admin']);
-    out(['ok' => true, 'avatar' => saveUpload('image')]);
+    $url = saveUpload('image');
+    db()->prepare('UPDATE groups SET avatar=? WHERE id=?')->execute([$url, $m[1]]);
+    tim_update_group((int)$m[1], null, $url);
+    tim_signal_group((int)$m[1], 'group-update', ['groupId' => (int)$m[1]], (int)$me['id']);
+    out(['ok' => true, 'avatar' => $url]);
 }
 
 if (preg_match('#^groups/(\d+)/invite$#', $route, $m) && $method === 'POST') {
@@ -271,9 +305,11 @@ if (preg_match('#^groups/(\d+)/invite$#', $route, $m) && $method === 'POST') {
         $target = pubUserById((int)$id);
         if ($target && !$target['isBot'] && !inGroup((int)$m[1], (int)$id)) {
             insertIgnore('group_members', ['group_id', 'user_id', 'role', 'joined_at'], [$m[1], (int)$id, 'member', now()]);
+            tim_add_group_member((int)$m[1], (int)$id);
             notify((int)$id, 'group_invite', (int)$me['id'], 'group', (int)$m[1], "邀请你加入了群聊「{$g['name']}」");
         }
     }
+    tim_signal_group((int)$m[1], 'group-update', ['groupId' => (int)$m[1]], (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -286,6 +322,9 @@ if (preg_match('#^groups/(\d+)/kick$#', $route, $m) && $method === 'POST') {
     if (!$target) fail('成员不存在');
     if ($target['role'] === 'owner' || ($mine['role'] === 'admin' && $target['role'] !== 'member')) fail('无权限操作该成员', 403);
     db()->prepare('DELETE FROM group_members WHERE group_id=? AND user_id=?')->execute([$gid, $target['user_id']]);
+    tim_sync_group_members($gid);
+    tim_signal_user((int)$target['user_id'], 'group-update', ['groupId' => $gid, 'removed' => true], (int)$me['id']);
+    tim_signal_group($gid, 'group-update', ['groupId' => $gid], (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -297,6 +336,7 @@ if (preg_match('#^groups/(\d+)/admin$#', $route, $m) && $method === 'POST') {
     if (!$target || $target['role'] === 'owner') fail('成员不存在');
     db()->prepare('UPDATE group_members SET role=? WHERE group_id=? AND user_id=?')
         ->execute((body()['set'] ?? false) ? ['admin', $gid, $target['user_id']] : ['member', $gid, $target['user_id']]);
+    tim_signal_group($gid, 'group-update', ['groupId' => $gid], (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -309,6 +349,8 @@ if (preg_match('#^groups/(\d+)/mute$#', $route, $m) && $method === 'POST') {
     $minutes = (int)(body()['minutes'] ?? 0);
     $until = $minutes > 0 ? now() + $minutes * 60 : 0;
     db()->prepare('UPDATE group_members SET muted_until=? WHERE group_id=? AND user_id=?')->execute([$until, $gid, $target['user_id']]);
+    tim_signal_user((int)$target['user_id'], 'group-update', ['groupId' => $gid, 'mutedUntil' => $until], (int)$me['id']);
+    tim_signal_group($gid, 'group-update', ['groupId' => $gid], (int)$me['id']);
     out(['ok' => true, 'mutedUntil' => $until]);
 }
 
@@ -323,6 +365,8 @@ if (preg_match('#^groups/(\d+)/transfer$#', $route, $m) && $method === 'POST') {
     db()->prepare("UPDATE group_members SET role='member' WHERE group_id=? AND user_id=?")->execute([$gid, $me['id']]);
     db()->prepare("UPDATE group_members SET role='owner' WHERE group_id=? AND user_id=?")->execute([$gid, $target['user_id']]);
     db()->prepare('UPDATE groups SET owner_id=? WHERE id=?')->execute([$target['user_id'], $gid]);
+    tim_update_group($gid, null, null, (int)$target['user_id']);
+    tim_signal_group($gid, 'group-update', ['groupId' => $gid], (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -333,6 +377,8 @@ if (preg_match('#^groups/(\d+)/leave$#', $route, $m) && $method === 'POST') {
     if (!$g || !$mine) fail('不是群成员');
     if ($g['is_official']) fail('Jay Chat官方群不能退出');
     db()->prepare('DELETE FROM group_members WHERE group_id=? AND user_id=?')->execute([$gid, $me['id']]);
+    tim_sync_group_members($gid);
+    tim_signal_group($gid, 'group-update', ['groupId' => $gid], (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -443,6 +489,8 @@ function handleMessageSend(int $uid, string $convType, int $convId, string $type
             register_shutdown_function(fn() => handleAIReply($group, $userMsg));
         }
     }
+    // 实时推送：通过腾讯 IM 自定义消息把新消息广播给接收方
+    tim_signal_conv($convType, $convId, 'msg', $message, $uid);
     return ['message' => $message];
 }
 
@@ -453,6 +501,8 @@ if (preg_match('#^messages/(\d+)/recall$#', $route, $m) && $method === 'POST') {
     if (!$msg || (int)$msg['sender_id'] !== (int)$me['id']) fail('只能撤回自己的消息', 403);
     if (now() - (int)$msg['created_at'] > 180) fail('超过 3 分钟，无法撤回');
     db()->prepare("UPDATE messages SET recalled=1, content='', media_url='' WHERE id=?")->execute([$msg['id']]);
+    $st = db()->prepare('SELECT * FROM messages WHERE id=?'); $st->execute([$msg['id']]);
+    if ($row = $st->fetch()) tim_signal_conv($row['conv_type'], (int)$row['conv_id'], 'msg-update', msgOut($row, (int)$me['id']), (int)$me['id']);
     out(['ok' => true]);
 }
 
@@ -500,6 +550,12 @@ if ($route === 'read' && $method === 'POST') {
     ensureReadRow($type, $canon, (int)$me['id']);
     db()->prepare('UPDATE conv_reads SET last_read_at=?, last_read_msg_id=? WHERE conv_type=? AND conv_id=? AND user_id=?')
         ->execute([now(), $lastId, $type, $canon, $me['id']]);
+    if ($type === 'group') {
+        tim_signal_group($convId, 'read-update', ['convType' => 'group', 'convId' => $convId, 'userId' => (int)$me['id'], 'lastReadMsgId' => $lastId], (int)$me['id']);
+    } else {
+        // 告诉对方：我已读（data.convId 用读者 id，接收端按其视角匹配）
+        tim_signal_user($convId, 'read-update', ['convType' => 'private', 'convId' => (int)$me['id'], 'userId' => (int)$me['id'], 'lastReadMsgId' => $lastId], (int)$me['id']);
+    }
     out(['ok' => true]);
 }
 
@@ -655,6 +711,9 @@ if ($route === 'moments' && $method === 'POST') {
             json_encode(array_map('intval', $b['visibleTo'] ?? [])), json_encode(array_map('intval', $b['hideFrom'] ?? [])), now()]);
     $id = (int)db()->lastInsertId();
     $st = db()->prepare('SELECT * FROM moments WHERE id=?'); $st->execute([$id]);
+    // 新动态广播（仅作为“刷新提示”，可见性仍由接口按规则判定）
+    $ogid = tim_official_group_id();
+    if ($ogid) tim_signal_group($ogid, 'moment-new', ['momentId' => $id, 'userId' => (int)$me['id'], 'visibility' => $vis], (int)$me['id']);
     out(['ok' => true, 'moment' => momentOut($st->fetch(), (int)$me['id'])]);
 }
 

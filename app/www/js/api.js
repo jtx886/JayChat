@@ -33,6 +33,8 @@
     toasts: [],
     typing: {},
     serverType: '',      // 'node' | 'php'
+    timReady: false,     // 腾讯 IM 实时通道是否已连接
+    timCred: null,       // 腾讯 IM 登录凭证缓存
   });
 
   function toast(msg, ms = 2200) {
@@ -248,6 +250,24 @@
   let serverType = 'node';
   let lastMsgId = 0, lastNotifId = 0, lastReads = {};
 
+  // ---- 腾讯云 IM 实时通道（PHP 模式的主通道；轮询作为兜底）----
+  let tim = null;                 // TIM SDK 实例
+  let timReady = false;           // 是否已成功登录 TIM
+  let heartbeatTimer = null;      // 在线心跳
+  let convRefreshTimer = null;    // 在线状态引起的会话刷新（去抖）
+  const seenMsgIds = new Set();   // 消息去重（TIM 与轮询双通道）
+  function markSeen(id) {
+    if (!id) return true;
+    if (seenMsgIds.has(id)) return false;
+    seenMsgIds.add(id);
+    if (seenMsgIds.size > 3000) {
+      const keep = [...seenMsgIds].slice(-1500);
+      seenMsgIds.clear();
+      for (const x of keep) seenMsgIds.add(x);
+    }
+    return true;
+  }
+
   async function detectServerType() {
     try {
       const r = await rawFetch(serverUrl() + '/api/server-info');
@@ -263,7 +283,7 @@
   function connectSocket() {
     stopRealtime();
     if (!store.token) return;
-    if (serverType === 'php') { startPoller(); return; }
+    if (serverType === 'php') { startPoller(); startHeartbeat(); connectTim(); return; }
     socket = io(serverUrl(), { auth: { token: store.token }, transports: ['websocket', 'polling'], reconnectionDelayMax: 5000 });
     socket.on('connect', () => {
       window.__socketReady = true;
@@ -293,8 +313,160 @@
     socket.on('typing', d => emitBus('typing', d));
     socket.io.on('reconnect', () => { refreshAll(); });
   }
-  function disconnectSocket() { stopRealtime(); }
+  function disconnectSocket() { stopRealtime(); disconnectTim(); }
   function getSocket() { return socket; }
+
+  /* ============ 腾讯云 IM 实时通道 ============ */
+  async function connectTim(creds) {
+    if (!window.TIM || !TIM.create) { timReady = false; store.timReady = false; return; }
+    try {
+      creds = creds || store.timCred || (await api('GET', '/api/tim/credentials'));
+      if (!creds || !creds.usersig) throw new Error('缺少 TIM 登录凭证');
+      store.timCred = creds;
+      if (tim) { try { await tim.logout(); } catch (e) { } try { tim.destroy(); } catch (e) { } tim = null; }
+      tim = TIM.create({ SDKAppID: Number(creds.sdkappid) });
+      try { tim.setLogLevel(0); } catch (e) { }
+      tim.on(TIM.EVENT.MESSAGE_RECEIVED, onTimMessage);
+      tim.on(TIM.EVENT.KICKED_OUT, () => { timReady = false; store.timReady = false; });
+      tim.on(TIM.EVENT.ERROR, e => console.warn('[TIM] error', e));
+      await tim.login({ userID: creds.identifier, userSig: creds.usersig });
+      timReady = true; store.timReady = true;
+    } catch (e) {
+      console.warn('[TIM] 连接失败，回退轮询模式', e);
+      timReady = false; store.timReady = false;
+    }
+  }
+
+  function disconnectTim() {
+    stopHeartbeat();
+    if (tim) { try { tim.logout(); } catch (e) { } try { tim.destroy(); } catch (e) { } tim = null; }
+    timReady = false; store.timReady = false;
+  }
+
+  // 收到腾讯 IM 自定义消息 → 解析为业务信号
+  function onTimMessage(event) {
+    for (const m of (event && event.data) || []) {
+      if (!m || m.type !== TIM.TYPES.MSG_CUSTOM) continue;
+      let sig = null;
+      try { sig = JSON.parse((m.payload && m.payload.data) || ''); } catch (e) { continue; }
+      if (!sig || !sig.e) continue;
+      handleSignal(sig.e, sig.d);
+    }
+  }
+
+  function handleSignal(evt, d) {
+    switch (evt) {
+      case 'msg':
+        deliverIncoming(d, true);
+        break;
+      case 'msg-update':
+        emitBus('msg-update', d);
+        break;
+      case 'read-update':
+        emitBus('read-update', d);
+        break;
+      case 'notification':
+        store.unreadNotifs = (d && typeof d.unread === 'number') ? d.unread : store.unreadNotifs + 1;
+        emitBus('notification', d);
+        if (d && d.actor) localNotify('Jay Chat', d.actor.username + ' ' + d.content);
+        if (d && d.type === 'friend_accepted') refreshFriends(); // 新好友即时出现在联系人
+        break;
+      case 'friendreq':
+        store.friendReqCount = (d && typeof d.count === 'number') ? d.count : store.friendReqCount + 1;
+        emitBus('friendreq', d);
+        if (d && d.from) toast(d.from.username + ' 请求添加你为好友');
+        break;
+      case 'presence':
+        if (d && d.userId) applyPresence(d.userId, !!d.online);
+        break;
+      case 'group-update':
+        emitBus('group-update', d);
+        refreshConversations();
+        break;
+      case 'moment-new':
+        emitBus('moments-refresh');
+        break;
+    }
+  }
+
+  // 新消息统一入口：去重 + 派发 + 通知
+  function deliverIncoming(msg, refresh) {
+    if (!msg || !msg.id) return;
+    if (!markSeen(msg.id)) return;
+    emitBus('msg-new', msg);
+    const mine = store.me && store.me.id;
+    if (document.hidden && msg.sender && msg.sender.id !== mine && !isMuted(msg)) {
+      localNotify(msg.sender.username, previewText(msg));
+    }
+    if (refresh) refreshConversations();
+  }
+
+  function isMuted(msg) {
+    if (!msg) return false;
+    const partner = msg.convType === 'group' ? msg.convId : (msg.sender ? msg.sender.id : msg.convId);
+    const c = store.conversations.find(x => x.convType === msg.convType && Number(x.convId) === Number(partner));
+    return !!(c && c.muted);
+  }
+
+  /* ---- 在线状态：单点更新 + 全量覆盖 ---- */
+  function applyPresence(uid, online) {
+    const id = Number(uid);
+    if (!id) return;
+    if (online) store.presence[id] = true; else delete store.presence[id];
+    const f = store.friends.find(x => Number(x.id) === id);
+    if (f) f.online = !!online;
+    const c = store.conversations.find(x => x.convType === 'private' && Number(x.convId) === id);
+    if (c) c.online = !!online;
+    const cp = window.__chatPage;
+    if (cp && Array.isArray(cp.members)) {
+      const mem = cp.members.find(x => Number(x.id) === id);
+      if (mem) mem.online = !!online;
+    }
+    emitBus('presence', { userId: id, online: !!online });
+    scheduleConvRefresh();
+  }
+
+  function applyPresenceList(ids) {
+    const set = new Set((ids || []).map(Number));
+    const cur = Object.keys(store.presence).map(Number);
+    let same = cur.length === set.size;
+    if (same) for (const id of cur) if (!set.has(id)) { same = false; break; }
+    if (same) return; // 无变化 → 跳过重渲染
+    store.presence = {};
+    for (const id of set) store.presence[id] = true;
+    for (const f of store.friends) f.online = set.has(Number(f.id));
+    for (const c of store.conversations) if (c.convType === 'private') c.online = set.has(Number(c.convId));
+    const cp = window.__chatPage;
+    if (cp && Array.isArray(cp.members)) for (const m of cp.members) m.online = set.has(Number(m.id));
+    emitBus('presence', {});
+  }
+
+  // 在线人数变化后，延迟刷新会话列表（含群在线人数），去抖避免请求风暴
+  function scheduleConvRefresh() {
+    if (convRefreshTimer) return;
+    convRefreshTimer = setTimeout(() => { convRefreshTimer = null; refreshConversations(); }, 4000);
+  }
+
+  /* ---- 心跳：维持在线状态（服务端据此广播在线） ---- */
+  function startHeartbeat() {
+    stopHeartbeat();
+    const beat = async () => {
+      try {
+        const r = await api('POST', '/api/heartbeat');
+        if (r && Array.isArray(r.online)) applyPresenceList(r.online);
+      } catch (e) { }
+      heartbeatTimer = setTimeout(beat, document.hidden ? 25000 : 12000);
+    };
+    beat();
+  }
+  function stopHeartbeat() { if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; } }
+
+  // 回到前台时立即补一次心跳并恢复实时
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !store.token || serverType !== 'php') return;
+    startHeartbeat();
+    if (!timReady) connectTim();
+  });
 
   // ---- PHP polling mode (InfinityFree 等不支持 WebSocket 的主机) ----
   function startPoller() {
@@ -309,12 +481,8 @@
           lastMsgId: String(lastMsgId), lastNotifId: String(lastNotifId)
         });
         const d = await api('GET', '/api/sync?' + q.toString());
-        // presence
-        const pres = {};
-        for (const id of d.presence || []) pres[id] = true;
-        const changedPresence = JSON.stringify(pres) !== JSON.stringify(store.presence);
-        store.presence = pres;
-        if (changedPresence) emitBus('presence', {});
+        // presence（全量覆盖，用于剔除已下线用户）
+        if (Array.isArray(d.presence)) applyPresenceList(d.presence);
         // conversations
         if (Array.isArray(d.conversations)) store.conversations = d.conversations;
         // badges
@@ -327,14 +495,11 @@
           else if (n.type === 'like' || n.type === 'comment' || n.type === 'comment_reply') JC.localNotify('Jay Chat', n.actor.username + ' ' + n.content);
           emitBus('notification', n);
         }
-        // active conversation messages
+        // active conversation messages（去重，避免与 TIM 实时通道重复）
         if (d.active && Array.isArray(d.active.messages)) {
           for (const m of d.active.messages) {
             lastMsgId = Math.max(lastMsgId, m.id);
-            emitBus('msg-new', m);
-            if (document.hidden && m.sender && m.sender.id !== store.me?.id) {
-              JC.localNotify(m.sender.username, previewText(m));
-            }
+            deliverIncoming(m, false);
           }
           // read updates
           const reads = d.active.reads || {};
@@ -349,7 +514,11 @@
           }
         }
       } catch (e) { /* silent retry */ }
-      pollTimer = setTimeout(tick, document.hidden ? 4000 : 2000);
+      // TIM 实时通道可用时，轮询仅作兜底 → 降低频率，减轻服务器压力
+      const base = timReady
+        ? (document.hidden ? 25000 : 12000)
+        : (document.hidden ? 5000 : 2500);
+      pollTimer = setTimeout(tick, base);
     };
     tick();
   }
@@ -371,6 +540,7 @@
   function stopRealtime() {
     if (socket) { socket.disconnect(); socket = null; }
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    stopHeartbeat();
   }
 
   // ---- send message (transport agnostic) ----
@@ -378,6 +548,7 @@
     if (serverType === 'php') {
       try {
         const r = await api('POST', '/api/messages', payload);
+        if (r.message && r.message.id) markSeen(r.message.id); // 自己的消息已去重
         emitBus('msg-new', r.message);
         if (lastMsgId < r.message.id) lastMsgId = r.message.id;
         ack && ack({ id: r.message.id, createdAt: r.message.createdAt });
@@ -406,12 +577,7 @@
   function emitBus(evt, data) { (bus[evt] || []).slice().forEach(fn => { try { fn(data); } catch (e) { console.error(e); } }); }
 
   function onIncomingMessage(msg) {
-    emitBus('msg-new', msg);
-    // local notification when page hidden
-    if (document.hidden && msg.sender && msg.sender.id !== store.me?.id) {
-      localNotify(msg.sender.username, previewText(msg));
-    }
-    refreshConversations();
+    deliverIncoming(msg, true);
   }
 
   function localNotify(title, body) {
@@ -445,6 +611,7 @@
     localStorage.removeItem('jc_token');
     store.token = ''; store.me = null; store.conversations = []; store.friends = [];
     store.stack = []; store.unreadNotifs = 0; store.friendReqCount = 0; store.presence = {};
+    store.timReady = false; store.timCred = null;
     disconnectSocket();
   }
 
@@ -462,6 +629,7 @@
     store, api, toast, upload, compressImage, mediaUrl, serverUrl,
     fmtFull, fmtChat, pinyinLetter, groupByLetter, quoteText, previewText,
     connectSocket, disconnectSocket, getSocket, onBus, offBus, emitBus,
+    connectTim, disconnectTim, applyPresence, applyPresenceList,
     detectServerType, sendMessage, markRead,
     refreshConversations, refreshFriends, refreshBadges, refreshAll,
     logout, requestNotifPermission, localNotify,

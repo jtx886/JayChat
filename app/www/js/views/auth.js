@@ -61,6 +61,7 @@
           localStorage.setItem('jc_token', r.token);
           store.token = r.token;
           store.me = r.user;
+          if (r.tim) store.timCred = r.tim;
           await JC.detectServerType();
           JC.connectSocket();
           await JC.refreshAll();
@@ -139,6 +140,7 @@
           localStorage.setItem('jc_token', r.token);
           store.token = r.token;
           store.me = r.user;
+          if (r.tim) store.timCred = r.tim;
           await JC.detectServerType();
           JC.connectSocket();
           await JC.refreshAll();

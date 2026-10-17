@@ -1,7 +1,7 @@
 #!/bin/bash
 # 打包 InfinityFree 部署包：client(www) + PHP后端 → jaychat-infinityfree.zip
 set -e
-ROOT=/workspace/jaychat
+ROOT=/workspace
 STAGE=/tmp/jaychat-pack/htdocs
 rm -rf /tmp/jaychat-pack && mkdir -p "$STAGE"
 

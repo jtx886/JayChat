@@ -296,7 +296,11 @@
         actions.push({ label: '删除', act: 'del', ico: 'trash', danger: true });
         this.$root.sheet('消息操作', actions, async a => {
           if (a.act === 'recall') {
-            try { await JC.api('POST', `/api/messages/${m.id}/recall`); } catch (e) { JC.toast(e.message); }
+            try {
+              await JC.api('POST', `/api/messages/${m.id}/recall`);
+              // 本端立即生效（私聊的对方通过腾讯 IM 信号收到撤回）
+              this.onUpdate({ ...m, recalled: true, content: '', mediaUrl: '' });
+            } catch (e) { JC.toast(e.message); }
           } else if (a.act === 'copy') {
             try { await navigator.clipboard.writeText(m.type === 'quote' ? this.quoteOf(m).text : m.content); JC.toast('已复制'); } catch (e) { JC.toast('复制失败'); }
           } else if (a.act === 'quote') {

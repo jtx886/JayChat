@@ -20,6 +20,7 @@
         try {
           const r = await JC.api('GET', '/api/auth/me');
           store.me = r.user;
+          if (r.tim) store.timCred = r.tim;
           await JC.detectServerType();
           JC.connectSocket();
           await JC.refreshAll();
@@ -102,7 +103,7 @@
           <template v-if="store.me">
             <!-- tab pages (bottom of stack) -->
             <transition name="fade">
-              <component :is="'Views.'+currentView" v-if="!isStack" v-bind="currentProps" :key="'tab-'+store.tab" style="position:absolute;inset:0;display:flex;flex-direction:column;"/>
+              <component :is="'Views.'+currentView" v-if="!isStack" v-bind="currentProps" :key="'tab-'+store.tab" style="position:absolute;left:0;right:0;top:0;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));display:flex;flex-direction:column;"/>
             </transition>
             <!-- stacked pages -->
             <template v-if="isStack">

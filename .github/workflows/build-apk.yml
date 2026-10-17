@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,9 +30,6 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('app/android/**/*.gradle') }}
 
-      - name: Install server deps (ensures www assets referenced exist)
-        run: cd server && npm install
-
       - name: Build Android APK
         run: |
           cd app
@@ -39,8 +39,25 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/android/app/build/outputs/apk/release/app-release.apk dist/JayChat-v1.2.0.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: JayChat-APK
-          path: app/android/app/build/outputs/apk/release/app-release.apk
+          path: dist/JayChat-v1.2.0.apk
+
+      - name: Publish GitHub Release (APK download)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: jaychat-latest
+          name: Jay Chat APK (latest)
+          body: |
+            自动构建的 Jay Chat 安装包（微信风格 IM，含腾讯云 IM 实时消息 / 官方群 / Jay AI / 动态 / 通知）。
+          files: dist/JayChat-v1.2.0.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
